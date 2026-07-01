@@ -3,11 +3,15 @@ import { createJSONStorage, persist } from "zustand/middleware";
 import {
   ACHIEVEMENTS,
   UPGRADES,
+  type FormationId,
   type UpgradeCounts,
   createUpgradeCounts,
   getActiveSurgeMultiplier,
   getAutoIncomeValue,
   getClickPowerValue,
+  getFormation,
+  getUnlockedFormation,
+  isFormationUnlocked,
   getPassiveIncomeValue,
   getPrestigeGain,
   getTotalIncomeValue,
@@ -48,6 +52,7 @@ type GameSave = Pick<
   | "achievements"
   | "prestigeLevel"
   | "prestigePoints"
+  | "formationId"
   | "activeChain"
   | "lastClickAt"
   | "lastSavedAt"
@@ -64,6 +69,7 @@ export type GameState = {
   achievements: Record<string, number>;
   prestigeLevel: number;
   prestigePoints: number;
+  formationId: FormationId;
   activeChain: number;
   lastClickAt: number;
   lastSavedAt: number;
@@ -75,6 +81,7 @@ export type GameState = {
   prestige: () => boolean;
   saveNow: () => void;
   resetSave: () => void;
+  setFormation: (formationId: FormationId) => boolean;
   checkAchievements: () => void;
   getClickPower: () => number;
   getAutoIncome: () => number;
@@ -117,6 +124,7 @@ function createBaseState(createdAt = 0): GameSave {
     achievements: {},
     prestigeLevel: 0,
     prestigePoints: 0,
+    formationId: "balanced",
     activeChain: 0,
     lastClickAt: 0,
     lastSavedAt: createdAt,
@@ -172,21 +180,38 @@ function getDecayedActiveChain(state: GameState, now: number) {
   return Math.max(0, state.activeChain - decaySteps);
 }
 
+function getActiveSurgeValue(activeChain: number, formationId: FormationId) {
+  const baseSurge = getActiveSurgeMultiplier(activeChain);
+  const formation = getFormation(formationId);
+  const surgeBonus = Math.max(0, baseSurge - 1) * formation.multipliers.surgeBonus;
+
+  return Number((1 + surgeBonus).toFixed(2));
+}
+
 function getAchievementSnapshot(state: GameState) {
+  const formation = getUnlockedFormation(state.formationId, state.upgrades);
+
   return {
     currency: state.currency,
     lifetimeCurrency: state.lifetimeCurrency,
     runCurrency: state.runCurrency,
     totalClicks: state.totalClicks,
-    clickPower: getClickPowerValue(
-      state.upgrades,
-      state.prestigePoints
+    clickPower: Number(
+      (
+        getClickPowerValue(state.upgrades, state.prestigePoints) *
+        formation.multipliers.clickPower
+      ).toFixed(2)
     ),
-    autoIncome: getTotalIncomeValue(
-      state.upgrades,
-      state.prestigePoints
+    autoIncome: Number(
+      (
+        getTotalIncomeValue(state.upgrades, state.prestigePoints) *
+        Math.max(
+          formation.multipliers.activeIncome,
+          formation.multipliers.passiveIncome
+        )
+      ).toFixed(2)
     ),
-    activeSurge: getActiveSurgeMultiplier(state.activeChain),
+    activeSurge: getActiveSurgeValue(state.activeChain, formation.id),
     prestigeLevel: state.prestigeLevel,
     upgradeCount: getUpgradeCount(state.upgrades)
   };
@@ -199,11 +224,13 @@ export const useGameStore = create<GameState>()(
       click: () => {
         const now = Date.now();
         const state = get();
+        const formation = getUnlockedFormation(state.formationId, state.upgrades);
         const activeChain = getNextActiveChain(state, now);
         const amount = Number(
           (
             getClickPowerValue(state.upgrades, state.prestigePoints) *
-            getActiveSurgeMultiplier(activeChain)
+            formation.multipliers.clickPower *
+            getActiveSurgeValue(activeChain, formation.id)
           ).toFixed(2)
         );
 
@@ -256,8 +283,9 @@ export const useGameStore = create<GameState>()(
       },
       tick: (now = Date.now()) => {
         const state = get();
+        const formation = getUnlockedFormation(state.formationId, state.upgrades);
         const activeChain = getDecayedActiveChain(state, now);
-        const activeSurge = getActiveSurgeMultiplier(activeChain);
+        const activeSurge = getActiveSurgeValue(activeChain, formation.id);
         const elapsedMs = Math.max(
           0,
           Math.min(now - state.lastTickAt, MAX_IDLE_MS)
@@ -271,16 +299,21 @@ export const useGameStore = create<GameState>()(
           state.prestigePoints
         );
         const activeIncome =
-          activeChain > 0 ? autoIncome * activeSurge : 0;
+          activeChain > 0
+            ? autoIncome * formation.multipliers.activeIncome * activeSurge
+            : 0;
+        const passiveOutput =
+          passiveIncome * formation.multipliers.passiveIncome;
         const earned =
-          activeIncome + passiveIncome > 0
+          activeIncome + passiveOutput > 0
             ? Number(
-                (((activeIncome + passiveIncome) / 1000) * elapsedMs).toFixed(2)
+                (((activeIncome + passiveOutput) / 1000) * elapsedMs).toFixed(2)
               )
             : 0;
 
         set((current) => ({
           ...addCurrency(current, earned),
+          formationId: formation.id,
           activeChain,
           lastTickAt: now,
           lastSavedAt: now
@@ -304,6 +337,7 @@ export const useGameStore = create<GameState>()(
           currency: 0,
           runCurrency: 0,
           upgrades: createUpgradeCounts(),
+          formationId: "balanced",
           activeChain: 0,
           lastClickAt: 0,
           prestigeLevel: state.prestigeLevel + 1,
@@ -335,6 +369,25 @@ export const useGameStore = create<GameState>()(
           ...createBaseState(now),
           log: [createLog("save", "Save Reset", "Started a fresh run.", now)]
         });
+      },
+      setFormation: (formationId) => {
+        const state = get();
+        const formation = getFormation(formationId);
+
+        if (!isFormationUnlocked(formation, state.upgrades)) {
+          return false;
+        }
+
+        set((current) => ({
+          formationId,
+          lastSavedAt: Date.now(),
+          log: pushLog(
+            current.log,
+            createLog("event", "Formation", `${formation.name} selected.`)
+          )
+        }));
+
+        return true;
       },
       checkAchievements: () => {
         const state = get();
@@ -369,16 +422,19 @@ export const useGameStore = create<GameState>()(
       },
       getClickPower: () => {
         const state = get();
+        const formation = getUnlockedFormation(state.formationId, state.upgrades);
 
         return Number(
           (
             getClickPowerValue(state.upgrades, state.prestigePoints) *
-            getActiveSurgeMultiplier(state.activeChain)
+            formation.multipliers.clickPower *
+            getActiveSurgeValue(state.activeChain, formation.id)
           ).toFixed(2)
         );
       },
       getAutoIncome: () => {
         const state = get();
+        const formation = getUnlockedFormation(state.formationId, state.upgrades);
 
         if (state.activeChain <= 0) {
           return 0;
@@ -387,20 +443,27 @@ export const useGameStore = create<GameState>()(
         return Number(
           (
             getAutoIncomeValue(state.upgrades, state.prestigePoints) *
-            getActiveSurgeMultiplier(state.activeChain)
+            formation.multipliers.activeIncome *
+            getActiveSurgeValue(state.activeChain, formation.id)
           ).toFixed(2)
         );
       },
       getPassiveIncome: () => {
         const state = get();
+        const formation = getUnlockedFormation(state.formationId, state.upgrades);
 
-        return getPassiveIncomeValue(
-          state.upgrades,
-          state.prestigePoints
+        return Number(
+          (
+            getPassiveIncomeValue(state.upgrades, state.prestigePoints) *
+            formation.multipliers.passiveIncome
+          ).toFixed(2)
         );
       },
       getActiveSurge: () => {
-        return getActiveSurgeMultiplier(get().activeChain);
+        const state = get();
+        const formation = getUnlockedFormation(state.formationId, state.upgrades);
+
+        return getActiveSurgeValue(state.activeChain, formation.id);
       },
       getPrestigeGain: () => {
         return getPrestigeGain(get().runCurrency);
@@ -420,6 +483,7 @@ export const useGameStore = create<GameState>()(
         achievements: state.achievements,
         prestigeLevel: state.prestigeLevel,
         prestigePoints: state.prestigePoints,
+        formationId: state.formationId,
         activeChain: state.activeChain,
         lastClickAt: state.lastClickAt,
         lastSavedAt: state.lastSavedAt,
@@ -441,6 +505,7 @@ export const useGameStore = create<GameState>()(
             ...(saved.upgrades ?? {})
           },
           achievements: saved.achievements ?? {},
+          formationId: saved.formationId ?? "balanced",
           activeChain: saved.activeChain ?? 0,
           lastClickAt: saved.lastClickAt ?? 0,
           log: saved.log?.slice(0, MAX_LOG_ITEMS) ?? currentState.log

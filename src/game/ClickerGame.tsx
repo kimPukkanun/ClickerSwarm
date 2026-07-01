@@ -25,10 +25,12 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import {
   ACHIEVEMENTS,
+  FORMATIONS,
   UPGRADES,
   getNextPrestigeTarget,
   getPrestigeMultiplier,
-  getUpgradeCost
+  getUpgradeCost,
+  isFormationUnlocked
 } from "./game-data";
 import { formatDateTime, formatNumber, formatRate } from "./format";
 import { useGameStore, type GameLogType } from "./game-store";
@@ -64,6 +66,7 @@ const navItems = [
   { label: "Dashboard", targetId: "dashboard" },
   { label: "Upgrades", targetId: "upgrades" },
   { label: "Swarm", targetId: "swarm" },
+  { label: "Formations", targetId: "formations" },
   { label: "Prestige", targetId: "prestige" }
 ];
 
@@ -108,6 +111,7 @@ export function ClickerGame() {
   const achievements = useGameStore((state) => state.achievements);
   const prestigeLevel = useGameStore((state) => state.prestigeLevel);
   const prestigePoints = useGameStore((state) => state.prestigePoints);
+  const formationId = useGameStore((state) => state.formationId);
   const activeChain = useGameStore((state) => state.activeChain);
   const lastSavedAt = useGameStore((state) => state.lastSavedAt);
   const log = useGameStore((state) => state.log);
@@ -115,6 +119,7 @@ export function ClickerGame() {
   const buyUpgrade = useGameStore((state) => state.buyUpgrade);
   const tick = useGameStore((state) => state.tick);
   const prestige = useGameStore((state) => state.prestige);
+  const setFormation = useGameStore((state) => state.setFormation);
   const saveNow = useGameStore((state) => state.saveNow);
   const resetSave = useGameStore((state) => state.resetSave);
   const clickPower = useGameStore((state) => state.getClickPower());
@@ -189,6 +194,12 @@ export function ClickerGame() {
     99,
     72 + Math.round(prestigeProgress * 0.18) + Math.min(prestigeLevel * 2, 9)
   );
+  const savedFormation = FORMATIONS.find(
+    (formation) => formation.id === formationId
+  ) ?? FORMATIONS[0];
+  const currentFormation = isFormationUnlocked(savedFormation, upgrades)
+    ? savedFormation
+    : FORMATIONS[0];
   const stats: StatItem[] = [
     {
       label: "Credits",
@@ -563,7 +574,7 @@ export function ClickerGame() {
                   </motion.button>
                 </div>
 
-                <div className="grid gap-3 rounded-lg border border-[#766a58]/45 bg-[#1d1f18]/85 p-3 sm:grid-cols-3">
+                <div className="grid gap-3 rounded-lg border border-[#766a58]/45 bg-[#1d1f18]/85 p-3 sm:grid-cols-4">
                   <CockpitMetric
                     label="Run Credits"
                     value={formatNumber(runCurrency)}
@@ -575,6 +586,10 @@ export function ClickerGame() {
                   <CockpitMetric
                     label="Prestige Gain"
                     value={`+${formatNumber(prestigeGain)}`}
+                  />
+                  <CockpitMetric
+                    label="Formation"
+                    value={currentFormation.name}
                   />
                 </div>
               </div>
@@ -631,6 +646,81 @@ export function ClickerGame() {
           </div>
 
           <aside className="flex flex-col gap-4">
+            <section
+              id="formations"
+              className="scroll-mt-4 rounded-lg border border-[#766a58]/45 bg-[#25251e]/90 p-4 shadow-panel backdrop-blur"
+            >
+              <SectionTitle
+                eyebrow="Swarm Modes"
+                title="Formations"
+                icon={Radio}
+              />
+              <div className="mt-4 grid gap-2">
+                {FORMATIONS.map((formation) => {
+                  const unlocked = isFormationUnlocked(formation, upgrades);
+                  const selected = formation.id === currentFormation.id;
+                  const buttonLabel = unlocked
+                    ? `Select ${formation.name}`
+                    : formation.requirement;
+
+                  return (
+                    <button
+                      key={formation.id}
+                      type="button"
+                      title={buttonLabel}
+                      aria-label={buttonLabel}
+                      onClick={() => setFormation(formation.id)}
+                      disabled={!unlocked}
+                      className={`rounded-lg border p-3 text-left transition ${
+                        selected
+                          ? "border-[#c69a5d]/65 bg-[#3b3023]"
+                          : "border-[#766a58]/40 bg-[#1f211b]/75 hover:border-[#c69a5d]/45"
+                      } disabled:cursor-not-allowed disabled:opacity-55 disabled:hover:border-[#766a58]/40`}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="text-sm font-black text-[#fff8eb]">
+                            {formation.name}
+                          </p>
+                          <p className="mt-1 text-xs leading-5 text-[#b9ad99]">
+                            {formation.description}
+                          </p>
+                        </div>
+                        <span
+                          className={`shrink-0 rounded-md border px-2 py-1 text-xs font-black ${
+                            selected
+                              ? "border-[#c69a5d]/45 bg-[#d7c29a] text-[#26231b]"
+                              : unlocked
+                                ? "border-[#6f7d5b]/45 bg-[#3f4b37] text-[#c8d49f]"
+                                : "border-[#766a58]/40 bg-[#343329] text-[#857b68]"
+                          }`}
+                        >
+                          {selected ? "Active" : unlocked ? "Ready" : "Locked"}
+                        </span>
+                      </div>
+                      <p className="mt-2 text-xs font-bold text-[#857b68]">
+                        {formation.requirement}
+                      </p>
+                      <div className="mt-3 flex flex-wrap gap-2 text-xs font-bold text-[#a99b87]">
+                        <span>
+                          Click x{formation.multipliers.clickPower.toFixed(2)}
+                        </span>
+                        <span>
+                          Active x{formation.multipliers.activeIncome.toFixed(2)}
+                        </span>
+                        <span>
+                          Passive x{formation.multipliers.passiveIncome.toFixed(2)}
+                        </span>
+                        <span>
+                          Surge bonus x{formation.multipliers.surgeBonus.toFixed(2)}
+                        </span>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
+
             <section
               id="prestige"
               className="scroll-mt-4 rounded-lg border border-[#766a58]/45 bg-[#25251e]/90 p-4 shadow-panel backdrop-blur"

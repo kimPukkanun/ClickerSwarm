@@ -12,6 +12,27 @@ export type UpgradeDefinition = {
 
 export type UpgradeCounts = Record<string, number>;
 
+export type FormationId =
+  | "balanced"
+  | "harvest"
+  | "strike"
+  | "tap-net";
+
+export type FormationDefinition = {
+  id: FormationId;
+  name: string;
+  description: string;
+  requirement: string;
+  requiredUpgradeId?: string;
+  requiredUpgradeCount?: number;
+  multipliers: {
+    clickPower: number;
+    activeIncome: number;
+    passiveIncome: number;
+    surgeBonus: number;
+  };
+};
+
 export type AchievementSnapshot = {
   currency: number;
   lifetimeCurrency: number;
@@ -66,6 +87,63 @@ export const UPGRADES: UpgradeDefinition[] = [
   }
 ];
 
+export const FORMATIONS: FormationDefinition[] = [
+  {
+    id: "balanced",
+    name: "Balanced Orbit",
+    description: "Keeps the swarm neutral with no tradeoffs.",
+    requirement: "Unlocked",
+    multipliers: {
+      clickPower: 1,
+      activeIncome: 1,
+      passiveIncome: 1,
+      surgeBonus: 1
+    }
+  },
+  {
+    id: "harvest",
+    name: "Harvest Spiral",
+    description: "Boosts passive harvesters, but weakens active surge output.",
+    requirement: "Requires 1 Harvester Drone",
+    requiredUpgradeId: "harvester-drone",
+    requiredUpgradeCount: 1,
+    multipliers: {
+      clickPower: 0.9,
+      activeIncome: 0.85,
+      passiveIncome: 1.6,
+      surgeBonus: 0.7
+    }
+  },
+  {
+    id: "strike",
+    name: "Strike Wing",
+    description: "Boosts active drones and surge, but slows passive gains.",
+    requirement: "Requires 1 Micro Drone",
+    requiredUpgradeId: "micro-drone",
+    requiredUpgradeCount: 1,
+    multipliers: {
+      clickPower: 1.05,
+      activeIncome: 1.35,
+      passiveIncome: 0.7,
+      surgeBonus: 1.2
+    }
+  },
+  {
+    id: "tap-net",
+    name: "Tap Net",
+    description: "Focuses the swarm around direct tapping.",
+    requirement: "Requires 5 Tap Array levels",
+    requiredUpgradeId: "tap-array",
+    requiredUpgradeCount: 5,
+    multipliers: {
+      clickPower: 1.45,
+      activeIncome: 0.9,
+      passiveIncome: 0.8,
+      surgeBonus: 0.9
+    }
+  }
+];
+
 export const ACHIEVEMENTS: AchievementDefinition[] = [
   {
     id: "first-click",
@@ -111,6 +189,37 @@ export function createUpgradeCounts() {
 
 export function getUpgradeCost(upgrade: UpgradeDefinition, count: number) {
   return Math.floor(upgrade.baseCost * Math.pow(upgrade.costScale, count));
+}
+
+export function getFormation(formationId: FormationId) {
+  return FORMATIONS.find((formation) => formation.id === formationId) ?? FORMATIONS[0];
+}
+
+export function isFormationUnlocked(
+  formation: FormationDefinition,
+  upgrades: UpgradeCounts
+) {
+  if (!formation.requiredUpgradeId) {
+    return true;
+  }
+
+  return (
+    (upgrades[formation.requiredUpgradeId] ?? 0) >=
+    (formation.requiredUpgradeCount ?? 0)
+  );
+}
+
+export function getUnlockedFormation(
+  formationId: FormationId,
+  upgrades: UpgradeCounts
+) {
+  const formation = getFormation(formationId);
+
+  if (isFormationUnlocked(formation, upgrades)) {
+    return formation;
+  }
+
+  return FORMATIONS[0];
 }
 
 export function getPrestigeMultiplier(prestigePoints: number) {

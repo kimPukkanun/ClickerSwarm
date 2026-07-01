@@ -8,7 +8,7 @@ const config: Config = {
   theme: {
     extend: {
       boxShadow: {
-        panel: "0 18px 45px rgba(31, 41, 55, 0.10)"
+        panel: "0 22px 60px rgba(10, 9, 6, 0.32)"
       }
     }
   },

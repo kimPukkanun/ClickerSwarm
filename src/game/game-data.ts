@@ -19,6 +19,7 @@ export type AchievementSnapshot = {
   totalClicks: number;
   clickPower: number;
   autoIncome: number;
+  activeSurge: number;
   prestigeLevel: number;
   upgradeCount: number;
 };
@@ -36,9 +37,9 @@ export const UPGRADES: UpgradeDefinition[] = [
   {
     id: "tap-array",
     name: "Tap Array",
-    description: "Adds 1 click power.",
+    description: "Compounds click power.",
     baseCost: 15,
-    costScale: 1.15,
+    costScale: 1.22,
     clickPower: 1,
     autoIncome: 0,
     theme: "amber"
@@ -46,9 +47,9 @@ export const UPGRADES: UpgradeDefinition[] = [
   {
     id: "micro-drone",
     name: "Micro Drone",
-    description: "Adds 1 auto income per second.",
+    description: "Compounds active swarm income.",
     baseCost: 60,
-    costScale: 1.15,
+    costScale: 1.24,
     clickPower: 0,
     autoIncome: 1,
     theme: "cyan"
@@ -103,7 +104,7 @@ export function getUpgradeCost(upgrade: UpgradeDefinition, count: number) {
 }
 
 export function getPrestigeMultiplier(prestigePoints: number) {
-  return 1 + prestigePoints * 0.12;
+  return Math.pow(1.12, prestigePoints);
 }
 
 export function getPrestigeGain(runCurrency: number) {
@@ -120,10 +121,9 @@ export function getClickPowerValue(
   upgrades: UpgradeCounts,
   prestigePoints: number
 ) {
-  const upgradePower = UPGRADES.reduce((total, upgrade) => {
-    return total + (upgrades[upgrade.id] ?? 0) * upgrade.clickPower;
-  }, 0);
-  const value = (1 + upgradePower) * getPrestigeMultiplier(prestigePoints);
+  const tapArrayCount = upgrades["tap-array"] ?? 0;
+  const value =
+    Math.pow(1.28, tapArrayCount) * getPrestigeMultiplier(prestigePoints);
 
   return Number(value.toFixed(2));
 }
@@ -132,14 +132,26 @@ export function getAutoIncomeValue(
   upgrades: UpgradeCounts,
   prestigePoints: number
 ) {
-  const upgradeIncome = UPGRADES.reduce((total, upgrade) => {
-    return total + (upgrades[upgrade.id] ?? 0) * upgrade.autoIncome;
-  }, 0);
-  const value = upgradeIncome * getPrestigeMultiplier(prestigePoints);
+  const microDroneCount = upgrades["micro-drone"] ?? 0;
+
+  if (microDroneCount <= 0) {
+    return 0;
+  }
+
+  const value =
+    Math.pow(1.34, microDroneCount - 1) *
+    getPrestigeMultiplier(prestigePoints);
 
   return Number(value.toFixed(2));
 }
 
 export function getUpgradeCount(upgrades: UpgradeCounts) {
   return Object.values(upgrades).reduce((total, count) => total + count, 0);
+}
+
+export function getActiveSurgeMultiplier(activeChain: number) {
+  const chain = Math.max(0, Math.min(activeChain, 120));
+  const value = Math.pow(1.025, chain);
+
+  return Number(Math.min(value, 12).toFixed(2));
 }

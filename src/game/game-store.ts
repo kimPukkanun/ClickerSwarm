@@ -5,6 +5,7 @@ import {
   UPGRADES,
   type UpgradeCounts,
   createUpgradeCounts,
+  getActiveSurgeMultiplier,
   getAutoIncomeValue,
   getClickPowerValue,
   getPrestigeGain,
@@ -15,6 +16,9 @@ import {
 const SAVE_KEY = "clicker-swarm-save-v1";
 const MAX_IDLE_MS = 60 * 60 * 1000;
 const MAX_LOG_ITEMS = 18;
+const ACTIVE_CHAIN_WINDOW_MS = 1600;
+const ACTIVE_CHAIN_DECAY_MS = 1200;
+const MAX_ACTIVE_CHAIN = 120;
 
 export type GameLogType =
   | "click"
@@ -42,6 +46,8 @@ type GameSave = Pick<
   | "achievements"
   | "prestigeLevel"
   | "prestigePoints"
+  | "activeChain"
+  | "lastClickAt"
   | "lastSavedAt"
   | "lastTickAt"
   | "log"
@@ -56,10 +62,12 @@ export type GameState = {
   achievements: Record<string, number>;
   prestigeLevel: number;
   prestigePoints: number;
+  activeChain: number;
+  lastClickAt: number;
   lastSavedAt: number;
   lastTickAt: number;
   log: GameLogEntry[];
-  click: () => void;
+  click: () => number;
   buyUpgrade: (upgradeId: string) => boolean;
   tick: (now?: number) => void;
   prestige: () => boolean;
@@ -68,6 +76,7 @@ export type GameState = {
   checkAchievements: () => void;
   getClickPower: () => number;
   getAutoIncome: () => number;
+  getActiveSurge: () => number;
   getPrestigeGain: () => number;
 };
 
@@ -105,6 +114,8 @@ function createBaseState(createdAt = 0): GameSave {
     achievements: {},
     prestigeLevel: 0,
     prestigePoints: 0,
+    activeChain: 0,
+    lastClickAt: 0,
     lastSavedAt: createdAt,
     lastTickAt: createdAt,
     log: [
@@ -130,6 +141,34 @@ function addCurrency(state: GameState, amount: number) {
   };
 }
 
+function getNextActiveChain(state: GameState, now: number) {
+  const recentClick = now - state.lastClickAt <= ACTIVE_CHAIN_WINDOW_MS;
+
+  if (!recentClick) {
+    return 1;
+  }
+
+  return Math.min(state.activeChain + 1, MAX_ACTIVE_CHAIN);
+}
+
+function getDecayedActiveChain(state: GameState, now: number) {
+  if (state.activeChain <= 0 || state.lastClickAt <= 0) {
+    return 0;
+  }
+
+  const idleMs = now - state.lastClickAt;
+
+  if (idleMs <= ACTIVE_CHAIN_WINDOW_MS) {
+    return state.activeChain;
+  }
+
+  const decaySteps = Math.floor(
+    (idleMs - ACTIVE_CHAIN_WINDOW_MS) / ACTIVE_CHAIN_DECAY_MS
+  ) + 1;
+
+  return Math.max(0, state.activeChain - decaySteps);
+}
+
 function getAchievementSnapshot(state: GameState) {
   return {
     currency: state.currency,
@@ -144,6 +183,7 @@ function getAchievementSnapshot(state: GameState) {
       state.upgrades,
       state.prestigePoints
     ),
+    activeSurge: getActiveSurgeMultiplier(state.activeChain),
     prestigeLevel: state.prestigeLevel,
     upgradeCount: getUpgradeCount(state.upgrades)
   };
@@ -155,14 +195,25 @@ export const useGameStore = create<GameState>()(
       ...createBaseState(),
       click: () => {
         const now = Date.now();
-        const amount = get().getClickPower();
+        const state = get();
+        const activeChain = getNextActiveChain(state, now);
+        const amount = Number(
+          (
+            getClickPowerValue(state.upgrades, state.prestigePoints) *
+            getActiveSurgeMultiplier(activeChain)
+          ).toFixed(2)
+        );
 
         set((state) => ({
           ...addCurrency(state, amount),
           totalClicks: state.totalClicks + 1,
+          activeChain,
+          lastClickAt: now,
           lastSavedAt: now
         }));
         get().checkAchievements();
+
+        return amount;
       },
       buyUpgrade: (upgradeId) => {
         const upgrade = UPGRADES.find((item) => item.id === upgradeId);
@@ -202,6 +253,8 @@ export const useGameStore = create<GameState>()(
       },
       tick: (now = Date.now()) => {
         const state = get();
+        const activeChain = getDecayedActiveChain(state, now);
+        const activeSurge = getActiveSurgeMultiplier(activeChain);
         const elapsedMs = Math.max(
           0,
           Math.min(now - state.lastTickAt, MAX_IDLE_MS)
@@ -210,10 +263,14 @@ export const useGameStore = create<GameState>()(
           state.upgrades,
           state.prestigePoints
         );
-        const earned = Number(((autoIncome * elapsedMs) / 1000).toFixed(2));
+        const earned =
+          activeChain > 0
+            ? Number((((autoIncome * activeSurge) / 1000) * elapsedMs).toFixed(2))
+            : 0;
 
         set((current) => ({
           ...addCurrency(current, earned),
+          activeChain,
           lastTickAt: now,
           lastSavedAt: now
         }));
@@ -236,6 +293,8 @@ export const useGameStore = create<GameState>()(
           currency: 0,
           runCurrency: 0,
           upgrades: createUpgradeCounts(),
+          activeChain: 0,
+          lastClickAt: 0,
           prestigeLevel: state.prestigeLevel + 1,
           prestigePoints: state.prestigePoints + gain,
           lastSavedAt: now,
@@ -300,18 +359,29 @@ export const useGameStore = create<GameState>()(
       getClickPower: () => {
         const state = get();
 
-        return getClickPowerValue(
-          state.upgrades,
-          state.prestigePoints
+        return Number(
+          (
+            getClickPowerValue(state.upgrades, state.prestigePoints) *
+            getActiveSurgeMultiplier(state.activeChain)
+          ).toFixed(2)
         );
       },
       getAutoIncome: () => {
         const state = get();
 
-        return getAutoIncomeValue(
-          state.upgrades,
-          state.prestigePoints
+        if (state.activeChain <= 0) {
+          return 0;
+        }
+
+        return Number(
+          (
+            getAutoIncomeValue(state.upgrades, state.prestigePoints) *
+            getActiveSurgeMultiplier(state.activeChain)
+          ).toFixed(2)
         );
+      },
+      getActiveSurge: () => {
+        return getActiveSurgeMultiplier(get().activeChain);
       },
       getPrestigeGain: () => {
         return getPrestigeGain(get().runCurrency);
@@ -331,6 +401,8 @@ export const useGameStore = create<GameState>()(
         achievements: state.achievements,
         prestigeLevel: state.prestigeLevel,
         prestigePoints: state.prestigePoints,
+        activeChain: state.activeChain,
+        lastClickAt: state.lastClickAt,
         lastSavedAt: state.lastSavedAt,
         lastTickAt: state.lastTickAt,
         log: state.log
@@ -350,6 +422,8 @@ export const useGameStore = create<GameState>()(
             ...(saved.upgrades ?? {})
           },
           achievements: saved.achievements ?? {},
+          activeChain: saved.activeChain ?? 0,
+          lastClickAt: saved.lastClickAt ?? 0,
           log: saved.log?.slice(0, MAX_LOG_ITEMS) ?? currentState.log
         };
       }

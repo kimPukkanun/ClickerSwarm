@@ -107,6 +107,7 @@ export function ClickerGame() {
   const achievements = useGameStore((state) => state.achievements);
   const prestigeLevel = useGameStore((state) => state.prestigeLevel);
   const prestigePoints = useGameStore((state) => state.prestigePoints);
+  const activeChain = useGameStore((state) => state.activeChain);
   const lastSavedAt = useGameStore((state) => state.lastSavedAt);
   const log = useGameStore((state) => state.log);
   const click = useGameStore((state) => state.click);
@@ -117,6 +118,7 @@ export function ClickerGame() {
   const resetSave = useGameStore((state) => state.resetSave);
   const clickPower = useGameStore((state) => state.getClickPower());
   const autoIncome = useGameStore((state) => state.getAutoIncome());
+  const activeSurge = useGameStore((state) => state.getActiveSurge());
   const prestigeGain = useGameStore((state) => state.getPrestigeGain());
 
   useEffect(() => {
@@ -177,10 +179,6 @@ export function ClickerGame() {
     99,
     72 + Math.round(prestigeProgress * 0.18) + Math.min(prestigeLevel * 2, 9)
   );
-  const swarmReadiness = Math.round(
-    (unlockedAchievementCount / ACHIEVEMENTS.length) * 100
-  );
-
   const stats: StatItem[] = [
     {
       label: "Credits",
@@ -199,9 +197,19 @@ export function ClickerGame() {
     {
       label: "Auto Income",
       value: formatRate(autoIncome),
-      detail: `${totalUpgradeCount} total upgrades`,
+      detail:
+        activeChain > 0
+          ? `${totalUpgradeCount} total upgrades`
+          : "Tap to activate drones",
       icon: Clock,
       tone: "moss"
+    },
+    {
+      label: "Active Surge",
+      value: `x${activeSurge.toFixed(2)}`,
+      detail: `${activeChain} chain`,
+      icon: Activity,
+      tone: "sage"
     }
   ];
 
@@ -226,12 +234,12 @@ export function ClickerGame() {
     const id = Date.now();
     const x = Math.round(Math.random() * 72) - 36;
 
-    click();
+    const amount = click();
     setFloatingGains((items) => [
       ...items.slice(-5),
       {
         id,
-        amount: clickPower,
+        amount,
         x
       }
     ]);
@@ -328,7 +336,7 @@ export function ClickerGame() {
           </div>
         </header>
 
-        <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           {stats.map((stat) => (
             <Stat key={stat.label} stat={stat} />
           ))}
@@ -383,12 +391,7 @@ export function ClickerGame() {
                             {upgrade.description}
                           </p>
                           <div className="mt-3 flex flex-wrap gap-2 text-xs font-bold text-[#a99b87]">
-                            {upgrade.clickPower > 0 && (
-                              <span>+{formatNumber(upgrade.clickPower)} click</span>
-                            )}
-                            {upgrade.autoIncome > 0 && (
-                              <span>+{formatRate(upgrade.autoIncome)}</span>
-                            )}
+                            <span>{getUpgradeEffectText(upgrade.id)}</span>
                           </div>
                         </div>
                       </div>
@@ -451,8 +454,8 @@ export function ClickerGame() {
                   />
                   <HudBadge
                     label="Swarm Readiness"
-                    value={`${swarmReadiness}%`}
-                    percent={swarmReadiness}
+                    value={`x${activeSurge.toFixed(2)}`}
+                    percent={Math.min(activeChain, 100)}
                     icon={Activity}
                   />
                 </div>
@@ -546,6 +549,7 @@ export function ClickerGame() {
                 <ProductionChart
                   clickPower={clickPower}
                   autoIncome={autoIncome}
+                  activeChain={activeChain}
                 />
               </section>
 
@@ -743,6 +747,18 @@ function getProductionBars(clickPower: number, autoIncome: number) {
   });
 }
 
+function getUpgradeEffectText(upgradeId: string) {
+  if (upgradeId === "tap-array") {
+    return "x1.28 click";
+  }
+
+  if (upgradeId === "micro-drone") {
+    return "x1.34 active income";
+  }
+
+  return "Compounding output";
+}
+
 function SectionTitle({
   eyebrow,
   title,
@@ -859,10 +875,12 @@ function TelemetryRow({
 
 function ProductionChart({
   clickPower,
-  autoIncome
+  autoIncome,
+  activeChain
 }: {
   clickPower: number;
   autoIncome: number;
+  activeChain: number;
 }) {
   const productionBars = useMemo(
     () => getProductionBars(clickPower, autoIncome),
@@ -895,6 +913,9 @@ function ProductionChart({
           <p className="font-bold text-[#a99b87]">Passive Output</p>
           <p className="mt-1 font-black text-[#fff8eb]">
             {formatRate(autoIncome)}
+          </p>
+          <p className="mt-1 text-xs font-bold text-[#857b68]">
+            {activeChain > 0 ? "Active" : "Idle"}
           </p>
         </div>
       </div>

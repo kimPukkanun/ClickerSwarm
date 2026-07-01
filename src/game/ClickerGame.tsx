@@ -236,6 +236,10 @@ export function ClickerGame() {
             <div className="mt-4 flex flex-col gap-3">
               {upgradeRows.map((upgrade) => {
                 const canAfford = currency >= upgrade.cost;
+                const missingCurrency = Math.max(upgrade.cost - currency, 0);
+                const buyLabel = canAfford
+                  ? `Buy ${upgrade.name} for ${formatNumber(upgrade.cost)} currency`
+                  : `Need ${formatNumber(missingCurrency)} more currency to buy ${upgrade.name}`;
                 const Icon = upgrade.Icon;
 
                 return (
@@ -271,13 +275,16 @@ export function ClickerGame() {
                     </div>
                     <button
                       type="button"
-                      title={`Buy ${upgrade.name}`}
+                      title={buyLabel}
+                      aria-label={buyLabel}
                       onClick={() => buyUpgrade(upgrade.id)}
                       disabled={!canAfford}
-                      className="mt-4 inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-cyan-700 px-4 text-sm font-bold text-white transition hover:bg-cyan-800 disabled:cursor-not-allowed disabled:bg-slate-300"
+                      className="mt-4 inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-cyan-700 px-4 text-sm font-bold text-white transition hover:bg-cyan-800 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-600"
                     >
                       <Coins className="h-4 w-4" />
-                      Buy {formatNumber(upgrade.cost)}
+                      {canAfford
+                        ? `Buy ${formatNumber(upgrade.cost)}`
+                        : `Need ${formatNumber(missingCurrency)} more`}
                     </button>
                   </article>
                 );

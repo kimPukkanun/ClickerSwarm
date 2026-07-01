@@ -56,7 +56,8 @@ type DroneVisualNode = {
 
 const upgradeIcons: Record<string, LucideIcon> = {
   "tap-array": MousePointerClick,
-  "micro-drone": Bot
+  "micro-drone": Bot,
+  "harvester-drone": Radio
 };
 
 const navItems = [
@@ -118,6 +119,7 @@ export function ClickerGame() {
   const resetSave = useGameStore((state) => state.resetSave);
   const clickPower = useGameStore((state) => state.getClickPower());
   const autoIncome = useGameStore((state) => state.getAutoIncome());
+  const passiveIncome = useGameStore((state) => state.getPassiveIncome());
   const activeSurge = useGameStore((state) => state.getActiveSurge());
   const prestigeGain = useGameStore((state) => state.getPrestigeGain());
 
@@ -171,9 +173,17 @@ export function ClickerGame() {
     0
   );
   const microDroneCount = Math.max(0, Math.floor(upgrades["micro-drone"] ?? 0));
-  const droneVisualNodes = useMemo(
-    () => getDroneVisualNodes(microDroneCount),
+  const harvesterDroneCount = Math.max(
+    0,
+    Math.floor(upgrades["harvester-drone"] ?? 0)
+  );
+  const microDroneVisualNodes = useMemo(
+    () => getDroneVisualNodes(microDroneCount, "micro-drone", -90, 0),
     [microDroneCount]
+  );
+  const harvesterDroneVisualNodes = useMemo(
+    () => getDroneVisualNodes(harvesterDroneCount, "harvester-drone", -72, 8),
+    [harvesterDroneCount]
   );
   const coreStability = Math.min(
     99,
@@ -195,7 +205,7 @@ export function ClickerGame() {
       tone: "clay"
     },
     {
-      label: "Auto Income",
+      label: "Active Income",
       value: formatRate(autoIncome),
       detail:
         activeChain > 0
@@ -205,11 +215,18 @@ export function ClickerGame() {
       tone: "moss"
     },
     {
+      label: "Passive Gain",
+      value: formatRate(passiveIncome),
+      detail: `${harvesterDroneCount} harvesters`,
+      icon: Radio,
+      tone: "sage"
+    },
+    {
       label: "Active Surge",
       value: `x${activeSurge.toFixed(2)}`,
       detail: `${activeChain} chain`,
       icon: Activity,
-      tone: "sage"
+      tone: "moss"
     }
   ];
 
@@ -336,7 +353,7 @@ export function ClickerGame() {
           </div>
         </header>
 
-        <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
           {stats.map((stat) => (
             <Stat key={stat.label} stat={stat} />
           ))}
@@ -433,6 +450,15 @@ export function ClickerGame() {
                   percent={Math.min((upgrades["micro-drone"] ?? 0) * 12, 100)}
                   icon={Bot}
                 />
+                <TelemetryRow
+                  label="Harvester Drones"
+                  value={`${upgrades["harvester-drone"] ?? 0} passive`}
+                  percent={Math.min(
+                    (upgrades["harvester-drone"] ?? 0) * 12,
+                    100
+                  )}
+                  icon={Radio}
+                />
               </div>
             </section>
           </aside>
@@ -465,7 +491,7 @@ export function ClickerGame() {
                   <div className="absolute h-[260px] w-[260px] rounded-full border border-dashed border-[#849283]/40 sm:h-[320px] sm:w-[320px]" />
                   <div className="absolute h-[190px] w-[190px] rounded-full border border-[#bd7f5a]/30 sm:h-[240px] sm:w-[240px]" />
 
-                  {droneVisualNodes.map((node) => (
+                  {microDroneVisualNodes.map((node) => (
                     <motion.div
                       key={node.id}
                       className="absolute flex h-8 w-8 items-center justify-center rounded-lg border border-[#766a58]/55 bg-[#2f3128] text-[#d7c29a] shadow-[0_0_20px_rgba(198,154,93,0.16)] sm:h-10 sm:w-10"
@@ -478,6 +504,21 @@ export function ClickerGame() {
                       }}
                     >
                       <Bot className="h-4 w-4 sm:h-5 sm:w-5" />
+                    </motion.div>
+                  ))}
+                  {harvesterDroneVisualNodes.map((node) => (
+                    <motion.div
+                      key={node.id}
+                      className="absolute flex h-8 w-8 items-center justify-center rounded-lg border border-[#6f7d5b]/60 bg-[#263024] text-[#c8d49f] shadow-[0_0_20px_rgba(111,125,91,0.2)] sm:h-10 sm:w-10"
+                      style={{ left: node.left, top: node.top }}
+                      animate={{ y: [0, 7, 0] }}
+                      transition={{
+                        duration: 3.1,
+                        repeat: Infinity,
+                        delay: node.delay
+                      }}
+                    >
+                      <Radio className="h-4 w-4 sm:h-5 sm:w-5" />
                     </motion.div>
                   ))}
 
@@ -549,6 +590,7 @@ export function ClickerGame() {
                 <ProductionChart
                   clickPower={clickPower}
                   autoIncome={autoIncome}
+                  passiveIncome={passiveIncome}
                   activeChain={activeChain}
                 />
               </section>
@@ -691,18 +733,23 @@ export function ClickerGame() {
   );
 }
 
-function getDroneVisualNodes(count: number): DroneVisualNode[] {
+function getDroneVisualNodes(
+  count: number,
+  prefix: string,
+  angleOffset: number,
+  radiusOffset: number
+): DroneVisualNode[] {
   return Array.from({ length: count }, (_, index) => {
     const ring = getDroneRing(index);
-    const angle = -90 + (360 / ring.capacity) * ring.index;
+    const angle = angleOffset + (360 / ring.capacity) * ring.index;
     const radians = (angle * Math.PI) / 180;
-    const radiusX = Math.min(41, 24 + ring.level * 7);
-    const radiusY = Math.min(37, 21 + ring.level * 6);
+    const radiusX = Math.min(43, 24 + ring.level * 7 + radiusOffset);
+    const radiusY = Math.min(39, 21 + ring.level * 6 + radiusOffset);
     const left = 50 + Math.cos(radians) * radiusX;
     const top = 50 + Math.sin(radians) * radiusY;
 
     return {
-      id: `micro-drone-${index}`,
+      id: `${prefix}-${index}`,
       left: `${clampVisualPosition(left)}%`,
       top: `${clampVisualPosition(top)}%`,
       delay: (index % 12) * 0.14
@@ -734,14 +781,23 @@ function clampVisualPosition(value: number) {
   return Math.min(92, Math.max(8, Number(value.toFixed(2))));
 }
 
-function getProductionBars(clickPower: number, autoIncome: number) {
+function getProductionBars(
+  clickPower: number,
+  autoIncome: number,
+  passiveIncome: number
+) {
   const clickOutput = Math.max(0, clickPower);
-  const passiveOutput = Math.max(0, autoIncome);
+  const activeOutput = Math.max(0, autoIncome);
+  const passiveOutput = Math.max(0, passiveIncome);
 
   return Array.from({ length: 12 }, (_, index) => {
     const clickPulse = index % 2 === 0 ? 1 : 0.65;
-    const passiveFlow = 0.55 + index * 0.04;
-    const output = clickOutput * clickPulse + passiveOutput * passiveFlow;
+    const activeFlow = 0.55 + index * 0.04;
+    const passiveFlow = 0.5 + index * 0.03;
+    const output =
+      clickOutput * clickPulse +
+      activeOutput * activeFlow +
+      passiveOutput * passiveFlow;
 
     return Math.round(12 + Math.min(78, Math.sqrt(output) * 18));
   });
@@ -754,6 +810,10 @@ function getUpgradeEffectText(upgradeId: string) {
 
   if (upgradeId === "micro-drone") {
     return "x1.34 active income";
+  }
+
+  if (upgradeId === "harvester-drone") {
+    return "x1.22 passive income";
   }
 
   return "Compounding output";
@@ -876,15 +936,17 @@ function TelemetryRow({
 function ProductionChart({
   clickPower,
   autoIncome,
+  passiveIncome,
   activeChain
 }: {
   clickPower: number;
   autoIncome: number;
+  passiveIncome: number;
   activeChain: number;
 }) {
   const productionBars = useMemo(
-    () => getProductionBars(clickPower, autoIncome),
-    [clickPower, autoIncome]
+    () => getProductionBars(clickPower, autoIncome, passiveIncome),
+    [clickPower, autoIncome, passiveIncome]
   );
 
   return (
@@ -902,7 +964,7 @@ function ProductionChart({
           </div>
         ))}
       </div>
-      <div className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
+      <div className="mt-3 grid gap-2 text-sm sm:grid-cols-3">
         <div className="rounded-lg border border-[#766a58]/35 bg-[#1f211b]/75 p-3">
           <p className="font-bold text-[#a99b87]">Click Output</p>
           <p className="mt-1 font-black text-[#fff8eb]">
@@ -910,13 +972,20 @@ function ProductionChart({
           </p>
         </div>
         <div className="rounded-lg border border-[#766a58]/35 bg-[#1f211b]/75 p-3">
-          <p className="font-bold text-[#a99b87]">Passive Output</p>
+          <p className="font-bold text-[#a99b87]">Active Output</p>
           <p className="mt-1 font-black text-[#fff8eb]">
             {formatRate(autoIncome)}
           </p>
           <p className="mt-1 text-xs font-bold text-[#857b68]">
             {activeChain > 0 ? "Active" : "Idle"}
           </p>
+        </div>
+        <div className="rounded-lg border border-[#766a58]/35 bg-[#1f211b]/75 p-3">
+          <p className="font-bold text-[#a99b87]">Passive Output</p>
+          <p className="mt-1 font-black text-[#fff8eb]">
+            {formatRate(passiveIncome)}
+          </p>
+          <p className="mt-1 text-xs font-bold text-[#857b68]">Always on</p>
         </div>
       </div>
     </div>

@@ -53,6 +53,16 @@ export const UPGRADES: UpgradeDefinition[] = [
     clickPower: 0,
     autoIncome: 1,
     theme: "cyan"
+  },
+  {
+    id: "harvester-drone",
+    name: "Harvester Drone",
+    description: "Compounds passive income while idle.",
+    baseCost: 140,
+    costScale: 1.26,
+    clickPower: 0,
+    autoIncome: 1,
+    theme: "green"
   }
 ];
 
@@ -143,6 +153,35 @@ export function getAutoIncomeValue(
     getPrestigeMultiplier(prestigePoints);
 
   return Number(value.toFixed(2));
+}
+
+export function getPassiveIncomeValue(
+  upgrades: UpgradeCounts,
+  prestigePoints: number
+) {
+  const harvesterDroneCount = upgrades["harvester-drone"] ?? 0;
+
+  if (harvesterDroneCount <= 0) {
+    return 0;
+  }
+
+  const value =
+    Math.pow(1.22, harvesterDroneCount - 1) *
+    getPrestigeMultiplier(prestigePoints);
+
+  return Number(value.toFixed(2));
+}
+
+export function getTotalIncomeValue(
+  upgrades: UpgradeCounts,
+  prestigePoints: number
+) {
+  return Number(
+    (
+      getAutoIncomeValue(upgrades, prestigePoints) +
+      getPassiveIncomeValue(upgrades, prestigePoints)
+    ).toFixed(2)
+  );
 }
 
 export function getUpgradeCount(upgrades: UpgradeCounts) {

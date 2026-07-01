@@ -8,7 +8,9 @@ import {
   getActiveSurgeMultiplier,
   getAutoIncomeValue,
   getClickPowerValue,
+  getPassiveIncomeValue,
   getPrestigeGain,
+  getTotalIncomeValue,
   getUpgradeCost,
   getUpgradeCount
 } from "./game-data";
@@ -76,6 +78,7 @@ export type GameState = {
   checkAchievements: () => void;
   getClickPower: () => number;
   getAutoIncome: () => number;
+  getPassiveIncome: () => number;
   getActiveSurge: () => number;
   getPrestigeGain: () => number;
 };
@@ -179,7 +182,7 @@ function getAchievementSnapshot(state: GameState) {
       state.upgrades,
       state.prestigePoints
     ),
-    autoIncome: getAutoIncomeValue(
+    autoIncome: getTotalIncomeValue(
       state.upgrades,
       state.prestigePoints
     ),
@@ -263,9 +266,17 @@ export const useGameStore = create<GameState>()(
           state.upgrades,
           state.prestigePoints
         );
+        const passiveIncome = getPassiveIncomeValue(
+          state.upgrades,
+          state.prestigePoints
+        );
+        const activeIncome =
+          activeChain > 0 ? autoIncome * activeSurge : 0;
         const earned =
-          activeChain > 0
-            ? Number((((autoIncome * activeSurge) / 1000) * elapsedMs).toFixed(2))
+          activeIncome + passiveIncome > 0
+            ? Number(
+                (((activeIncome + passiveIncome) / 1000) * elapsedMs).toFixed(2)
+              )
             : 0;
 
         set((current) => ({
@@ -378,6 +389,14 @@ export const useGameStore = create<GameState>()(
             getAutoIncomeValue(state.upgrades, state.prestigePoints) *
             getActiveSurgeMultiplier(state.activeChain)
           ).toFixed(2)
+        );
+      },
+      getPassiveIncome: () => {
+        const state = get();
+
+        return getPassiveIncomeValue(
+          state.upgrades,
+          state.prestigePoints
         );
       },
       getActiveSurge: () => {

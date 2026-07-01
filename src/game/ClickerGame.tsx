@@ -9,7 +9,6 @@ import {
   RefreshCw,
   RotateCcw,
   Save,
-  Sparkles,
   Trophy,
   Zap,
   type LucideIcon
@@ -17,14 +16,12 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import {
   ACHIEVEMENTS,
-  SIMPLE_EVENTS,
   UPGRADES,
-  getActiveEventDefinition,
   getNextPrestigeTarget,
   getPrestigeMultiplier,
   getUpgradeCost
 } from "./game-data";
-import { formatDateTime, formatDuration, formatNumber, formatRate } from "./format";
+import { formatDateTime, formatNumber, formatRate } from "./format";
 import { useGameStore } from "./game-store";
 
 type FloatingGain = {
@@ -35,10 +32,7 @@ type FloatingGain = {
 
 const upgradeIcons: Record<string, LucideIcon> = {
   "tap-array": MousePointerClick,
-  "pulse-finger": Zap,
-  "micro-drone": Activity,
-  "harvest-loop": Sparkles,
-  "overclock-core": RefreshCw
+  "micro-drone": Activity
 };
 
 const themeClasses = {
@@ -58,8 +52,6 @@ export function ClickerGame() {
   const totalClicks = useGameStore((state) => state.totalClicks);
   const upgrades = useGameStore((state) => state.upgrades);
   const achievements = useGameStore((state) => state.achievements);
-  const activeEvent = useGameStore((state) => state.activeEvent);
-  const eventCooldownEndsAt = useGameStore((state) => state.eventCooldownEndsAt);
   const prestigeLevel = useGameStore((state) => state.prestigeLevel);
   const prestigePoints = useGameStore((state) => state.prestigePoints);
   const lastSavedAt = useGameStore((state) => state.lastSavedAt);
@@ -67,14 +59,12 @@ export function ClickerGame() {
   const click = useGameStore((state) => state.click);
   const buyUpgrade = useGameStore((state) => state.buyUpgrade);
   const tick = useGameStore((state) => state.tick);
-  const startEvent = useGameStore((state) => state.startEvent);
   const prestige = useGameStore((state) => state.prestige);
   const saveNow = useGameStore((state) => state.saveNow);
   const resetSave = useGameStore((state) => state.resetSave);
   const clickPower = useGameStore((state) => state.getClickPower());
   const autoIncome = useGameStore((state) => state.getAutoIncome());
   const prestigeGain = useGameStore((state) => state.getPrestigeGain());
-  const canStartEvent = useGameStore((state) => state.canStartEvent());
 
   useEffect(() => {
     let mounted = true;
@@ -118,8 +108,6 @@ export function ClickerGame() {
     return () => window.clearInterval(timer);
   }, [hydrated, tick]);
 
-  const activeEventDefinition = getActiveEventDefinition(activeEvent);
-  const eventCooldownMs = eventCooldownEndsAt - Date.now();
   const nextPrestigeTarget = getNextPrestigeTarget(runCurrency);
   const prestigeProgress = Math.min((runCurrency / nextPrestigeTarget) * 100, 100);
   const unlockedAchievementCount = Object.keys(achievements).length;
@@ -231,42 +219,7 @@ export function ClickerGame() {
               </div>
             </section>
 
-            <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-panel">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <h2 className="text-lg font-bold text-slate-950">Event System</h2>
-                  <p className="text-sm text-slate-500">
-                    {activeEventDefinition
-                      ? `${activeEventDefinition.name} ends in ${formatDuration(
-                          activeEvent!.endsAt - Date.now()
-                        )}`
-                      : formatDuration(eventCooldownMs)}
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  title="Start event"
-                  onClick={startEvent}
-                  disabled={!canStartEvent}
-                  className="inline-flex h-10 items-center gap-2 rounded-lg bg-slate-950 px-4 text-sm font-bold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
-                >
-                  <Sparkles className="h-4 w-4" />
-                  Event
-                </button>
-              </div>
 
-              <div className="mt-4 grid gap-2 sm:grid-cols-3">
-                {SIMPLE_EVENTS.map((event) => (
-                  <div
-                    key={event.id}
-                    className={`rounded-lg border p-3 ${themeClasses[event.theme]}`}
-                  >
-                    <p className="text-sm font-bold">{event.name}</p>
-                    <p className="mt-1 text-xs">{event.description}</p>
-                  </div>
-                ))}
-              </div>
-            </section>
           </div>
 
           <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-panel">

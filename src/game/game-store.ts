@@ -2,12 +2,9 @@ import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import {
   ACHIEVEMENTS,
-  SIMPLE_EVENTS,
   UPGRADES,
-  type ActiveEvent,
   type UpgradeCounts,
   createUpgradeCounts,
-  getActiveEventDefinition,
   getAutoIncomeValue,
   getClickPowerValue,
   getPrestigeGain,
@@ -43,9 +40,6 @@ type GameSave = Pick<
   | "totalClicks"
   | "upgrades"
   | "achievements"
-  | "activeEvent"
-  | "eventCooldownEndsAt"
-  | "eventCursor"
   | "prestigeLevel"
   | "prestigePoints"
   | "lastSavedAt"
@@ -60,9 +54,6 @@ export type GameState = {
   totalClicks: number;
   upgrades: UpgradeCounts;
   achievements: Record<string, number>;
-  activeEvent: ActiveEvent | null;
-  eventCooldownEndsAt: number;
-  eventCursor: number;
   prestigeLevel: number;
   prestigePoints: number;
   lastSavedAt: number;
@@ -71,7 +62,6 @@ export type GameState = {
   click: () => void;
   buyUpgrade: (upgradeId: string) => boolean;
   tick: (now?: number) => void;
-  startEvent: () => boolean;
   prestige: () => boolean;
   saveNow: () => void;
   resetSave: () => void;
@@ -79,7 +69,6 @@ export type GameState = {
   getClickPower: () => number;
   getAutoIncome: () => number;
   getPrestigeGain: () => number;
-  canStartEvent: () => boolean;
 };
 
 function createLog(
@@ -114,9 +103,6 @@ function createBaseState(createdAt = 0): GameSave {
     totalClicks: 0,
     upgrades: createUpgradeCounts(),
     achievements: {},
-    activeEvent: null,
-    eventCooldownEndsAt: 0,
-    eventCursor: 0,
     prestigeLevel: 0,
     prestigePoints: 0,
     lastSavedAt: createdAt,
@@ -125,7 +111,7 @@ function createBaseState(createdAt = 0): GameSave {
       createLog(
         "save",
         "New Save",
-        "Currency, upgrades, events, prestige, and achievements are tracked.",
+        "Currency, upgrades, prestige, and achievements are tracked.",
         createdAt
       )
     ]
@@ -152,13 +138,11 @@ function getAchievementSnapshot(state: GameState) {
     totalClicks: state.totalClicks,
     clickPower: getClickPowerValue(
       state.upgrades,
-      state.prestigePoints,
-      state.activeEvent
+      state.prestigePoints
     ),
     autoIncome: getAutoIncomeValue(
       state.upgrades,
-      state.prestigePoints,
-      state.activeEvent
+      state.prestigePoints
     ),
     prestigeLevel: state.prestigeLevel,
     upgradeCount: getUpgradeCount(state.upgrades)
@@ -224,69 +208,21 @@ export const useGameStore = create<GameState>()(
         );
         const autoIncome = getAutoIncomeValue(
           state.upgrades,
-          state.prestigePoints,
-          state.activeEvent,
-          now
+          state.prestigePoints
         );
         const earned = Number(((autoIncome * elapsedMs) / 1000).toFixed(2));
-        const activeEvent = getActiveEventDefinition(state.activeEvent, now)
-          ? state.activeEvent
-          : null;
-        const eventExpired = state.activeEvent && !activeEvent;
 
         set((current) => ({
           ...addCurrency(current, earned),
-          activeEvent,
           lastTickAt: now,
-          lastSavedAt: now,
-          log: eventExpired
-            ? pushLog(
-                current.log,
-                createLog("event", "Event Complete", "Timed event ended.")
-              )
-            : current.log
+          lastSavedAt: now
         }));
 
         if (earned > 0) {
           get().checkAchievements();
         }
       },
-      startEvent: () => {
-        const state = get();
-        const now = Date.now();
 
-        if (!get().canStartEvent()) {
-          return false;
-        }
-
-        const event = SIMPLE_EVENTS[state.eventCursor % SIMPLE_EVENTS.length];
-        const instantCurrency =
-          (event.instantCurrency ?? 0) * (1 + state.prestigePoints * 0.12);
-
-        set((current) => ({
-          ...addCurrency(current, instantCurrency),
-          activeEvent:
-            event.durationMs > 0
-              ? {
-                  id: event.id,
-                  endsAt: now + event.durationMs
-                }
-              : null,
-          eventCooldownEndsAt: now + event.cooldownMs,
-          eventCursor: current.eventCursor + 1,
-          lastSavedAt: now,
-          log: pushLog(
-            current.log,
-            createLog("event", event.name, event.description)
-          )
-        }));
-
-        if (instantCurrency > 0) {
-          get().checkAchievements();
-        }
-
-        return true;
-      },
       prestige: () => {
         const gain = get().getPrestigeGain();
 
@@ -300,8 +236,6 @@ export const useGameStore = create<GameState>()(
           currency: 0,
           runCurrency: 0,
           upgrades: createUpgradeCounts(),
-          activeEvent: null,
-          eventCooldownEndsAt: now + 15000,
           prestigeLevel: state.prestigeLevel + 1,
           prestigePoints: state.prestigePoints + gain,
           lastSavedAt: now,
@@ -368,8 +302,7 @@ export const useGameStore = create<GameState>()(
 
         return getClickPowerValue(
           state.upgrades,
-          state.prestigePoints,
-          state.activeEvent
+          state.prestigePoints
         );
       },
       getAutoIncome: () => {
@@ -377,19 +310,11 @@ export const useGameStore = create<GameState>()(
 
         return getAutoIncomeValue(
           state.upgrades,
-          state.prestigePoints,
-          state.activeEvent
+          state.prestigePoints
         );
       },
       getPrestigeGain: () => {
         return getPrestigeGain(get().runCurrency);
-      },
-      canStartEvent: () => {
-        const state = get();
-        const now = Date.now();
-        const eventIsActive = Boolean(getActiveEventDefinition(state.activeEvent, now));
-
-        return !eventIsActive && state.eventCooldownEndsAt <= now;
       }
     }),
     {
@@ -404,9 +329,6 @@ export const useGameStore = create<GameState>()(
         totalClicks: state.totalClicks,
         upgrades: state.upgrades,
         achievements: state.achievements,
-        activeEvent: state.activeEvent,
-        eventCooldownEndsAt: state.eventCooldownEndsAt,
-        eventCursor: state.eventCursor,
         prestigeLevel: state.prestigeLevel,
         prestigePoints: state.prestigePoints,
         lastSavedAt: state.lastSavedAt,
@@ -428,7 +350,6 @@ export const useGameStore = create<GameState>()(
             ...(saved.upgrades ?? {})
           },
           achievements: saved.achievements ?? {},
-          activeEvent: saved.activeEvent ?? null,
           log: saved.log?.slice(0, MAX_LOG_ITEMS) ?? currentState.log
         };
       }
